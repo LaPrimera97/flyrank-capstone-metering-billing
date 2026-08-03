@@ -1,7 +1,7 @@
 import stripe
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
-
+from decimal import Decimal
 from app.settings import settings
 from app.models import Tenant, WebhookEvent
 
@@ -40,12 +40,24 @@ def is_duplicate_event(db: Session, stripe_event_id: str) -> bool:
     return db.query(WebhookEvent).filter(WebhookEvent.stripe_event_id == stripe_event_id).first() is not None
 
 
+def _json_safe(value):
+    """Stripe payloads can contain Decimal amounts, which Python's default
+    JSON encoder can't serialize. Recursively convert them before storing."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def record_event(db: Session, event: dict) -> None:
     db.add(
         WebhookEvent(
             stripe_event_id=event["id"],
             event_type=event["type"],
-            payload=event["data"]["object"],
+            payload=_json_safe(event["data"]["object"]),
         )
     )
     db.commit()
