@@ -5,6 +5,21 @@ changed. This capstone was built collaboratively with Claude end-to-end,
 including running the actual test suite and fixing real bugs it produced —
 not just generating code that was never executed.
 
+## Live deployment debugging (Codespaces + real Stripe test mode)
+
+Found and fixed only after deploying to a real Codespace with real
+PostgreSQL and a real Stripe test account. During a real Checkout run,
+`checkout.session.completed` succeeded (200), but `invoice.created` and
+`invoice.payment_succeeded` returned 500:
+
+sqlalchemy.exc.StatementError: (builtins.TypeError) Object of type Decimal is not JSON serializable
+
+Root cause: newer Stripe API versions represent some invoice amounts as
+Python `Decimal` objects, which the default JSON encoder can't serialize.
+Fixed with a recursive `_json_safe()` helper in `app/services/stripe_service.py`
+that converts `Decimal` to `float` before storage. Re-ran the full Checkout
+flow — all events succeeded with 200 afterward.
+
 ## Where AI helped
 
 - Full project scaffold: layered architecture (routers → services → models),
@@ -62,13 +77,18 @@ not just generating code that was never executed.
    **Fix:** split into two tests — missing header → 422, present-but-invalid
    key → 401 — and documented the distinction.
 
-## What a reviewer should verify themselves
+## Verified live, post-build
 
-- `docker compose up --build` boots cleanly against real Postgres (this log
-  covers the SQLite-based dev/test path only — Postgres via Docker was not
-  exercised in the environment this was built in, and should be your first
-  smoke test on Codespaces).
-- A real Stripe Checkout flow end-to-end with `stripe listen` forwarding to
-  a live server (the webhook *tests* use hand-signed payloads to avoid
-  needing live Stripe calls in CI; a real Checkout session should be run at
-  least once for the demo).
+Both open items from the original build session were completed and verified
+afterward, in a real GitHub Codespace:
+
+- **Real PostgreSQL** — `alembic upgrade head` ran cleanly against Postgres
+  (via `docker compose up -d db`), and the full pytest suite (23/23) plus a
+  live `/docs` smoke test ran against it successfully.
+- **Real Stripe Checkout, end to end** — a live account (`FlyRank Capstone
+  Demo sandbox`) was created, a Pro Plan product/price was set up, and a
+  full Checkout session was completed with test card `4242 4242 4242 4242`.
+  `stripe listen` forwarded real webhook events to the running server; all
+  processed with a 200 after the Decimal bug fix above. `GET /usage`
+  confirmed the tenant's plan flipped from `free` to `pro`. See
+  `EVIDENCE.md` for the full transcript.
