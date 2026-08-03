@@ -1,0 +1,25 @@
+name: usage-metering-billing-engine
+run: docker compose up --build
+seed: python -m scripts.seed
+test: pytest -v
+base_url: http://localhost:8000
+
+endpoints:
+  - method: POST
+    path: /tenants
+    description: Create a tenant, returns an API key
+  - method: POST
+    path: /v1/generate
+    description: Billable action; requires X-API-Key and Idempotency-Key headers
+  - method: GET
+    path: /usage
+    description: Monthly usage/cost rollup; requires X-API-Key header
+  - method: POST
+    path: /billing/checkout
+    description: Creates a Stripe test-mode Checkout session
+  - method: POST
+    path: /webhooks/stripe
+    description: Stripe webhook receiver (signature-verified, deduplicated)
+  - method: GET
+    path: /health
+    description: Liveness check, no auth required
