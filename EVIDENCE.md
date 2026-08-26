@@ -140,3 +140,39 @@ See `README.md`.
 
 `README.md`, `capstone.yaml`, `EVIDENCE.md`, `BUILDLOG.md`, `.env.example`
 — all present at repo root.
+---
+
+## CONTAINERIZATION (docker compose up --build)
+
+### The run: command in capstone.yaml boots the full stack cold, migrations included
+
+A pre-submission audit found that the API container started uvicorn directly
+with no migration step - a fresh docker compose up --build (empty pgdata
+volume) would boot with no tables. Fixed by adding an entrypoint.sh that
+runs alembic upgrade head before handing off to the container's command,
+wired in via ENTRYPOINT in the Dockerfile.
+
+Verified with a genuinely cold run - volume wiped first, not reused:
+
+    $ docker compose down -v
+    $ docker compose up --build
+    ...
+    api-1  | INFO:     Application startup complete.
+
+Confirmed against the running containers, in a second terminal:
+
+    $ docker compose exec db psql -U billing -d billing -c "\dt"
+     public | alembic_version | table | billing
+     public | tenants         | table | billing
+     public | usage_events    | table | billing
+     public | webhook_events  | table | billing
+    (4 rows)
+
+    $ docker compose exec api alembic current
+    0001 (head)
+
+    $ curl -s http://localhost:8000/health
+    {"status":"ok"}
+
+All four tables exist, migrations are at head, and the API responds -
+from a clean volume, using only the command capstone.yaml declares as run:.

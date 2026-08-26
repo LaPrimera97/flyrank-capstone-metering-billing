@@ -92,3 +92,20 @@ afterward, in a real GitHub Codespace:
   processed with a 200 after the Decimal bug fix above. `GET /usage`
   confirmed the tenant's plan flipped from `free` to `pro`. See
   `EVIDENCE.md` for the full transcript.
+
+## Pre-submission audit: containerization gap (Claude)
+
+While preparing to submit, Claude reviewed the repo against the brief and
+flagged that docker compose up --build - the exact command declared as
+run: in capstone.yaml - would fail on a clean checkout, because nothing
+ran alembic upgrade head inside the container. The Codespace quickstart
+worked fine (migrations run manually on the host), which is why this had
+gone unnoticed.
+
+Fix (AI-assisted, verified by hand): Claude proposed an entrypoint.sh
+that runs migrations before exec'ing the container's command, and the
+Dockerfile change to wire it in as ENTRYPOINT. I ran it myself: wiped
+the pgdata volume, ran docker compose up --build cold, then checked
+the database tables, alembic current, and /health directly in a second
+terminal to confirm the migration step actually did the work rather than
+uvicorn just happening to boot. See EVIDENCE.md for the full transcript.
